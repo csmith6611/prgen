@@ -1,8 +1,11 @@
 use std::env;
 use std::process;
 
-mod git;
-
+mod display;
+mod git_getter;
+mod history;
+mod llm;
+mod prompt;
 fn main() {
     // Get command line arguments (excluding the program name)
     let args: Vec<String> = env::args().skip(1).collect();
@@ -23,9 +26,55 @@ fn main() {
 
     // Call the get_git_diff function with the provided arguments
     // and print the result or error
-    match git::get_git_diff(&base, &comparison) {
-        Ok(diff) => println!("Git Diff:\n{}", diff),
-        Err(e) => eprintln!("Error getting git diff: {}", e),
+    let git_diff = match git_getter::get_git_diff(&base, &comparison) {
+        Ok(diff) => diff,
+        Err(e) => {
+            eprintln!("Error getting git diff: {}", e);
+            process::exit(1);
+        }
+    };
+
+    if git_diff.is_empty() {
+        println!(
+            "No differences found between '{}' and '{}'.",
+            base, comparison
+        );
+
+        process::exit(0);
+    }
+
+    let summary = prompt::ask_for_ticket_summary();
+    if summary.is_empty() {
+        eprintln!("No summary provided. Exiting without creating a PR.");
+        process::exit(0);
+    }
+
+    match llm::generate_pr_body(&git_diff, &summary) {
+        Ok(pr) => {
+            println!("\n✅ Generated PR:\n\n{}", pr);
+            display::copy_to_clipboard(&pr);
+            display::show_output_popup(&pr);
+
+            //get feedback also
+            match llm::generate_critiques(&git_diff, &summary) {
+                Ok(feedback) => {
+                    display::show_output_popup(&feedback);
+
+                    if let Ok(path) = history::save_to_history(
+                        &base,
+                        &comparison,
+                        &summary,
+                        &git_diff,
+                        &pr,
+                        &feedback,
+                    ) {
+                        println!("📁 Saved to: {}", path.display());
+                    }
+                }
+                Err(e) => eprintln!("❌ Feedback generation failed: {}", e),
+            }
+        }
+        Err(e) => eprintln!("❌ Error generating PR: {}", e),
     }
 }
 
