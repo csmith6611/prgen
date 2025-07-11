@@ -16,10 +16,12 @@ fn main() {
 
     let comparison: &str = if args.len() > 1 { &args[1] } else { "HEAD" };
 
+    let base: &str = if args.len() > 0 { &args[0] } else { "main" };
+
     // Call the get_git_diff function with the provided arguments
     // and print the result or error
 
-    match git::get_git_diff(&args[0], comparison) {
+    match git::get_git_diff(base, comparison) {
         Ok(diff) => println!("Git Diff:\n{}", diff),
         Err(e) => eprintln!("Error getting git diff: {}", e),
     }
